@@ -1,30 +1,34 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 public class Tile : MonoBehaviour
 {
+    public static event Action<Tile> OnClick;
+    public static event Action<Tile> OnDrag;
+    public static event Action OnRelease;
+    
     public int xIndex;
     public int yIndex;
 
-
-    public void Init(int x, int y)
+    public void Initialize(int x, int y)
     {
         xIndex = x;
         yIndex = y;
     }
 
-    void OnMouseDown()
+    private void OnMouseDown()
     {
-        if (Board.myBoard != null) Board.myBoard.ClickTile(this);
+        OnClick?.Invoke(this);
     }
 
-    void OnMouseEnter()
+    private void OnMouseEnter()
     {
-        if (Board.myBoard != null) Board.myBoard.DragToTile(this);
+        OnDrag?.Invoke(this);
     }
 
-    void OnMouseUp()
+    private void OnMouseUp()
     {
-        if (Board.myBoard != null) Board.myBoard.ReleaseTile();
+        OnRelease?.Invoke();
     }
 
 }

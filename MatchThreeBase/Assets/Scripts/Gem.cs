@@ -18,7 +18,7 @@ public class Gem : MonoBehaviour
 
     public GemType matchType;
 
-    bool m_isMoving = false;
+    private bool _isMoving;
 
 
     public void SetCoord(int x, int y)
@@ -30,42 +30,42 @@ public class Gem : MonoBehaviour
     //moveTime represents the length of the movement transition
     public void Move(int x, int y, float moveTime)
     {
-        if (!m_isMoving) StartCoroutine(MoveRoutine(new Vector3(x, y, 0), moveTime));
-    }
-
-    IEnumerator MoveRoutine(Vector3 destination, float moveTime)
-    {
-        Vector3 startPos = transform.position;
-        bool reachedDestination = false;
-        float elapsedTime = 0f;
-
-        m_isMoving = true;
-
-        while (!reachedDestination)
+        if (!_isMoving) StartCoroutine(MoveRoutine(new Vector3(x, y, 0), moveTime));
+        
+        IEnumerator MoveRoutine(Vector3 destination, float moveTime)
         {
-            if (Vector3.Distance(transform.position, destination) < 0.01f)
+            var startPos = transform.position;
+            var reachedDestination = false;
+            var elapsedTime = 0f;
+
+            _isMoving = true;
+
+            while (!reachedDestination)
             {
-                reachedDestination = true;
-                if (Board.myBoard != null) Board.myBoard.PlaceGem(this, (int)destination.x, (int)destination.y);
-                break;
+                if (Vector3.Distance(transform.position, destination) < 0.01f)
+                {
+                    reachedDestination = true;
+                    if (Board.myBoard != null) Board.myBoard.PlaceGem(this, (int)destination.x, (int)destination.y);
+                    break;
+                }
+
+                elapsedTime += Time.deltaTime;
+
+                var lerpValue = elapsedTime / moveTime;
+
+                //smoothing the interpolation
+                lerpValue = Mathf.Pow(lerpValue, 3) * (lerpValue * (6 * lerpValue - 15) + 10);
+
+                transform.position = Vector3.Lerp(startPos, destination, lerpValue);
+
+
+                yield return null;
+
             }
 
-            elapsedTime += Time.deltaTime;
-
-            float lerpValue = elapsedTime / moveTime;
-
-            //smoothing the interpolation
-            lerpValue = Mathf.Pow(lerpValue, 3) * (lerpValue * (6 * lerpValue - 15) + 10);
-
-            transform.position = Vector3.Lerp(startPos, destination, lerpValue);
-
-
-            yield return null;
-
+            _isMoving = false;
         }
-
-        m_isMoving = false;
-
+        
     }
 
 }

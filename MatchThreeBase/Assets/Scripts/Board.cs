@@ -14,39 +14,32 @@ public class Board : MonoBehaviour
         }
     }
 
-    public int width;
-    public int height;
+    [SerializeField] private Camera mainCam;
+    [SerializeField] private SpriteRenderer background;
 
-    public int borderPadding = 1;
+    [SerializeField] private int width;
+    [SerializeField] private int height;
 
-    public float swapTime = 0.5f;
+    [SerializeField] private int borderPadding = 1;
+
+    [SerializeField] private float swapTime = 0.5f;
+
+    private Transform _transform;
 
     public GameObject edge;
-
     public GameObject normalTile;
     public GameObject[] gems;
 
-    Tile[,] m_boardTiles;
-    Gem[,] m_boardGems;
+    private Tile[,] _boardTiles;
+    private Gem[,] _boardGems;
 
-    Tile m_clickedTile;
-    Tile m_targetTile;
+    private Tile _clickedTile;
+    private Tile _targetTile;
 
-    bool m_switchingEnabled = true;
+    private bool _switchingEnabled = true;
 
 
-    void Start()
-    {
-        m_boardGems = new Gem[width, height];
-        m_boardTiles = new Tile[width, height];
-
-        SetupTiles();
-        SetupCamera();
-        FillBoard(10, 0.5f);
-
-    }
-
-    void Awake()
+    private void Awake()
     {
         if (m_board == null) m_board = this;
         else if (m_board != this)
@@ -54,82 +47,73 @@ public class Board : MonoBehaviour
             Debug.LogError("Error: there are multiple Instances of a Singleton! #1", gameObject);
             Debug.LogError("Error: there are multiple Instances of a Singleton! #2", m_board.gameObject);
         }
-
+    }
+    
+    private void Start()
+    {
+        Tile.OnClick += ClickTile;
+        Tile.OnDrag += DragToTile;
+        Tile.OnRelease += ReleaseTile;
+        
+        _transform = transform;
+        _boardGems = new Gem[width, height];
+        _boardTiles = new Tile[width, height];
+        
+        SetupTiles();
+        SetupCamera();
+        FillBoard(10, 0.5f);
     }
 
     #region BoardSetupAndManagement
 
-    void SetupTiles()
+    private void SetupTiles()
     {
-        for (int i = 0; i < width; i++)
+        for (var i = 0; i < width; i++)
         {
-            for (int j = 0; j < height; j++)
+            for (var j = 0; j < height; j++)
             {
-                GameObject tile = Instantiate(normalTile, new Vector3(i, j, 0), Quaternion.identity) as GameObject;
-                tile.transform.parent = transform;
+                var tile = Instantiate(normalTile, new Vector3(i, j), Quaternion.identity, _transform);
                 tile.name = "Tile[" + i + ", " + j + "]";
-                m_boardTiles[i, j] = tile.GetComponent<Tile>();
-                m_boardTiles[i, j].Init(i, j);
+                _boardTiles[i, j] = tile.GetComponent<Tile>();
+                _boardTiles[i, j].Initialize(i, j);
                 AddBorderEdge(i, j);
-
             }
-
         }
-
     }
 
-    void AddBorderEdge(int i, int j)
+    private void AddBorderEdge(int i, int j)
     {
-        if (i == 0)
-        {
-            GameObject leftEdge = Instantiate(edge, new Vector3(-0.6944f, j, 0), Quaternion.identity) as GameObject;
-            leftEdge.transform.parent = transform;
-        }
+        if (i == 0) Instantiate(edge, new Vector3(-0.6944f, j, 0), Quaternion.identity, _transform);
 
-        if (j == 0)
-        {
-            GameObject bottomEdge = Instantiate(edge, new Vector3(i, -0.6944f, 0), Quaternion.Euler(new Vector3(0, 0, 90))) as GameObject;
-            bottomEdge.transform.parent = transform;
-        }
+        if (j == 0) Instantiate(edge, new Vector3(i, -0.6944f, 0), Quaternion.Euler(new Vector3(0, 0, 90)), _transform);
 
-        if (i == width - 1)
-        {
-            GameObject rightEdge = Instantiate(edge, new Vector3(width - 1 + 0.6944f, j, 0), Quaternion.Euler(new Vector3(0, 180, 0))) as GameObject;
-            rightEdge.transform.parent = transform;
-        }
+        if (i == width - 1) Instantiate(edge, new Vector3(width - 1 + 0.6944f, j, 0), Quaternion.Euler(new Vector3(0, 180, 0)), _transform);
 
-        if (j == height - 1)
-        {
-            GameObject topEdge = Instantiate(edge, new Vector3(i, height - 1 + 0.6944f, 0), Quaternion.Euler(new Vector3(0, 0, -90))) as GameObject;
-            topEdge.transform.parent = transform;
-        }
-
+        if (j == height - 1) Instantiate(edge, new Vector3(i, height - 1 + 0.6944f, 0), Quaternion.Euler(new Vector3(0, 0, -90)), _transform);
     }
 
-    void SetupCamera()
+    private void SetupCamera()
     {
-        float xPos = (float)(width - 1) / 2f;
-        float yPos = (float)(height - 1) / 2f;
+        var xPos = (float)(width - 1) / 2f;
+        var yPos = (float)(height - 1) / 2f;
 
-        Camera.main.transform.position = new Vector3(xPos, yPos, -10f);
+        mainCam.transform.position = new Vector3(xPos, yPos, -10f);
 
-        float aspectRatio = (float)Screen.width / (float)Screen.height;
-        float verticalSize = (float)height / 2f + (float)borderPadding;
-        float horizontalSize = ((float)width / 2f + (float)borderPadding) / aspectRatio;
+        var aspectRatio = (float)Screen.width / (float)Screen.height;
+        var verticalSize = (float)height / 2f + (float)borderPadding;
+        var horizontalSize = ((float)width / 2f + (float)borderPadding) / aspectRatio;
 
-        Camera.main.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
+        mainCam.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
 
-        SpriteRenderer background = Camera.main.transform.GetComponentInChildren<SpriteRenderer>();
-        float bgHeight = 2f * Camera.main.orthographicSize;
-        float bgWidth = bgHeight * Camera.main.aspect;
+        var bgHeight = 2f * mainCam.orthographicSize;
+        var bgWidth = bgHeight * mainCam.aspect;
 
         background.size = new Vector2(bgWidth, bgHeight);
-
     }
 
-    GameObject GetRandomGem()
+    private GameObject GetRandomGem()
     {
-        int rndIndex = UnityEngine.Random.Range(0, gems.Length);
+        var rndIndex = Random.Range(0, gems.Length);
         if (gems[rndIndex] == null) print("there's no valid Gem prefab at the index: " + rndIndex);
         return gems[rndIndex];
     }
@@ -142,22 +126,23 @@ public class Board : MonoBehaviour
             return;
         }
 
-        gameGem.transform.position = new Vector3(x, y, 0);
-        gameGem.transform.rotation = Quaternion.identity;
-        if (IsWithinBounds(x, y)) m_boardGems[x, y] = gameGem;
+        var gemTransform = gameGem.transform;
+        gemTransform.position = new Vector3(x, y, 0);
+        gemTransform.rotation = Quaternion.identity;
+        
+        if (IsWithinBounds(x, y)) _boardGems[x, y] = gameGem;
         gameGem.SetCoord(x, y);
-
     }
 
-    void FillBoard(int yOffset = 0, float dropTime = 0.1f)
+    private void FillBoard(int yOffset = 0, float dropTime = 0.1f)
     {
-        for (int i = 0; i < width; i++)
+        for (var i = 0; i < width; i++)
         {
-            for (int j = 0; j < height; j++)
+            for (var j = 0; j < height; j++)
             {
-                if (m_boardGems[i, j] == null)
+                if (_boardGems[i, j] == null)
                 {
-                    Gem gem = FillRandomAt(i, j, yOffset, dropTime);
+                    var gem = FillRandomAt(i, j, yOffset, dropTime);
 
                     while (HasMatchUponFill(i, j))
                     {
@@ -168,14 +153,12 @@ public class Board : MonoBehaviour
                 }
 
             }
-
         }
-
     }
 
-    Gem FillRandomAt(int x, int y, int yOffset = 0, float dropTime = 0.1f)
+    private Gem FillRandomAt(int x, int y, int yOffset = 0, float dropTime = 0.1f)
     {
-        GameObject randomGem = Instantiate(GetRandomGem()) as GameObject;
+        var randomGem = Instantiate(GetRandomGem());
 
         if (randomGem != null)
         {
@@ -187,44 +170,41 @@ public class Board : MonoBehaviour
                 randomGem.GetComponent<Gem>().Move(x, y, dropTime);
             }
 
-            randomGem.transform.parent = transform;
+            randomGem.transform.parent = _transform;
             return randomGem.GetComponent<Gem>();
-
         }
 
         return null;
-
     }
 
-    void ClearGemAt(int x, int y)
+    private void ClearGemAt(int x, int y)
     {
-        Gem gemToClear = (IsWithinBounds(x, y)) ? m_boardGems[x, y] : null;
+        var gemToClear = (IsWithinBounds(x, y)) ? _boardGems[x, y] : null;
         if (gemToClear != null)
         {
-            m_boardGems[x, y] = null;
+            _boardGems[x, y] = null;
             Destroy(gemToClear.gameObject);
         }
-
     }
 
-    void ClearGems(List<Gem> gemsToClear)
+    private void ClearGems(List<Gem> gemsToClear)
     {
-        foreach (Gem gem in gemsToClear)
+        for (var i = 0; i < gemsToClear.Count; i++)
         {
+            var gem = gemsToClear[i];
             if (gem != null) ClearGemAt(gem.xIndex, gem.yIndex);
         }
-
     }
 
-    void ClearAndRefillBoard(List<Gem> gems)
+    private void ClearAndRefillBoard(List<Gem> inGems)
     {
-        StartCoroutine(ClearAndRefillRoutine(gems));
+        StartCoroutine(ClearAndRefillRoutine(inGems));
     }
 
-    IEnumerator ClearAndRefillRoutine(List<Gem> gems)
+    IEnumerator ClearAndRefillRoutine(List<Gem> inGems)
     {
-        m_switchingEnabled = false;
-        List<Gem> matches = gems;
+        _switchingEnabled = false;
+        List<Gem> matches = inGems;
 
         do
         {
@@ -241,16 +221,16 @@ public class Board : MonoBehaviour
         }
         while (matches.Count != 0);
 
-        m_switchingEnabled = true;
+        _switchingEnabled = true;
 
     }
 
     IEnumerator ClearAndCollapseRoutine(List<Gem> gems)
     {
-        List<Gem> collapsingGems = new List<Gem>();
-        List<Gem> matches = new List<Gem>();
+        var collapsingGems = new List<Gem>();
+        var matches = new List<Gem>();
 
-        bool isFinished = false;
+        var isFinished = false;
 
         yield return new WaitForSeconds(0.5f);
 
@@ -281,7 +261,6 @@ public class Board : MonoBehaviour
         }
 
         yield return null;
-
     }
 
     IEnumerator RefillRoutine()
@@ -294,36 +273,35 @@ public class Board : MonoBehaviour
 
     #region TileManagement
 
-    public void ClickTile(Tile tile)
+    private void ClickTile(Tile tile)
     {
-        if (m_clickedTile == null) m_clickedTile = tile;
+        if (_clickedTile == null) 
+            _clickedTile = tile;
     }
 
-    public void DragToTile(Tile tile)
+    private void DragToTile(Tile tile)
     {
-        if (m_clickedTile != null && IsNextTo(tile, m_clickedTile)) m_targetTile = tile;
+        if (_clickedTile != null && IsNextTo(tile, _clickedTile)) _targetTile = tile;
     }
 
-    public void ReleaseTile()
+    private void ReleaseTile()
     {
-        if (m_clickedTile != null && m_targetTile != null) SwitchTiles(m_clickedTile, m_targetTile);
-
-        m_clickedTile = null;
-        m_targetTile = null;
-
+        if (_clickedTile != null && _targetTile != null) SwitchTiles(_clickedTile, _targetTile);
+        _clickedTile = null;
+        _targetTile = null;
     }
 
-    void SwitchTiles(Tile clickedTile, Tile targetTile)
+    private void SwitchTiles(Tile clickedTile, Tile targetTile)
     {
         StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
     }
 
     IEnumerator SwitchTilesRoutine(Tile clickedTile, Tile targetTile)
     {
-        if (m_switchingEnabled)
+        if (_switchingEnabled)
         {
-            Gem clickedGem = m_boardGems[clickedTile.xIndex, clickedTile.yIndex];
-            Gem targetGem = m_boardGems[targetTile.xIndex, targetTile.yIndex];
+            Gem clickedGem = _boardGems[clickedTile.xIndex, clickedTile.yIndex];
+            Gem targetGem = _boardGems[targetTile.xIndex, targetTile.yIndex];
 
             if (clickedGem != null && targetGem != null)
             {
@@ -359,25 +337,25 @@ public class Board : MonoBehaviour
 
     }
 
-    List<Gem> CollapseColumn(int column, float collapseTime = 0.1f)
+    private List<Gem> CollapseColumn(int column, float collapseTime = 0.1f)
     {
-        List<Gem> collapsingGems = new List<Gem>();
+        var collapsingGems = new List<Gem>();
 
         for (int i = 0; i < height - 1; i++)
         {
-            if (m_boardGems[column, i] == null)
+            if (_boardGems[column, i] == null)
             {
                 for (int j = i + 1; j < height; j++)
                 {
-                    if (m_boardGems[column, j] != null)
+                    if (_boardGems[column, j] != null)
                     {
-                        m_boardGems[column, j].Move(column, i, collapseTime * (j - i));
-                        m_boardGems[column, i] = m_boardGems[column, j];
-                        m_boardGems[column, i].SetCoord(column, i);
+                        _boardGems[column, j].Move(column, i, collapseTime * (j - i));
+                        _boardGems[column, i] = _boardGems[column, j];
+                        _boardGems[column, i].SetCoord(column, i);
 
-                        if (!collapsingGems.Contains(m_boardGems[column, i])) collapsingGems.Add(m_boardGems[column, i]);
+                        if (!collapsingGems.Contains(_boardGems[column, i])) collapsingGems.Add(_boardGems[column, i]);
 
-                        m_boardGems[column, j] = null;
+                        _boardGems[column, j] = null;
 
                         break;
 
@@ -393,10 +371,10 @@ public class Board : MonoBehaviour
 
     }
 
-    List<Gem> CollapseColumns(List<Gem> gems)
+    private List<Gem> CollapseColumns(List<Gem> inGems)
     {
-        List<Gem> collapsingGems = new List<Gem>();
-        List<int> columnsToCollapse = GetColumns(gems);
+        var collapsingGems = new List<Gem>();
+        var columnsToCollapse = GetColumns(inGems);
 
         foreach (int column in columnsToCollapse)
         {
@@ -404,19 +382,18 @@ public class Board : MonoBehaviour
         }
 
         return collapsingGems;
-
     }
 
     #endregion
 
     #region FindingMatches
 
-    List<Gem> FindMatches(int x, int y, Vector2 searchDirection, int minMatches = 3)
+    private List<Gem> FindMatches(int x, int y, Vector2 searchDirection, int minMatches = 3)
     {
-        List<Gem> matches = new List<Gem>();
+        var matches = new List<Gem>();
         Gem startGem = null;
 
-        if (IsWithinBounds(x, y)) startGem = m_boardGems[x, y];
+        if (IsWithinBounds(x, y)) startGem = _boardGems[x, y];
 
         if (startGem != null) matches.Add(startGem);
         else return null;
@@ -424,16 +401,16 @@ public class Board : MonoBehaviour
         int nextX;
         int nextY;
 
-        int maxSearchValue = (width > height) ? width : height;
+        var maxSearchValue = (width > height) ? width : height;
 
-        for (int i = 1; i < maxSearchValue - 1; i++)
+        for (var i = 1; i < maxSearchValue - 1; i++)
         {
-            nextX = x + (int)searchDirection.x * i;
-            nextY = y + (int)searchDirection.y * i;
+            nextX = x + (int) searchDirection.x * i;
+            nextY = y + (int) searchDirection.y * i;
 
             if (!IsWithinBounds(nextX, nextY)) break;
 
-            Gem nextGem = m_boardGems[nextX, nextY];
+            Gem nextGem = _boardGems[nextX, nextY];
 
             if (nextGem == null) break;
             else
@@ -448,54 +425,41 @@ public class Board : MonoBehaviour
         if (matches.Count >= minMatches) return matches;
 
         return null;
-
     }
 
-    List<Gem> FindVerticalMatches(int x, int y, int minMatches = 3)
+    private List<Gem> FindVerticalMatches(int x, int y, int minMatches = 3)
     {
-        List<Gem> upwardMatches = FindMatches(x, y, new Vector2(0, 1), 2);
-        List<Gem> downwardMatches = FindMatches(x, y, new Vector2(0, -1), 2);
-
+        var upwardMatches = FindMatches(x, y, new Vector2(0, 1), 2);
+        var downwardMatches = FindMatches(x, y, new Vector2(0, -1), 2);
         if (upwardMatches == null) upwardMatches = new List<Gem>();
         if (downwardMatches == null) downwardMatches = new List<Gem>();
-
         var combinedMatches = upwardMatches.Union(downwardMatches).ToList();
-
         return (combinedMatches.Count >= minMatches) ? combinedMatches : null;
-
     }
 
-    List<Gem> FindHorizontalMatches(int x, int y, int minMatches = 3)
+    private List<Gem> FindHorizontalMatches(int x, int y, int minMatches = 3)
     {
-        List<Gem> leftMatches = FindMatches(x, y, new Vector2(-1, 0), 2);
-        List<Gem> rightMatches = FindMatches(x, y, new Vector2(1, 0), 2);
-
+        var leftMatches = FindMatches(x, y, new Vector2(-1, 0), 2);
+        var rightMatches = FindMatches(x, y, new Vector2(1, 0), 2);
         if (leftMatches == null) leftMatches = new List<Gem>();
         if (rightMatches == null) rightMatches = new List<Gem>();
-
         var combinedMatches = leftMatches.Union(rightMatches).ToList();
-
         return (combinedMatches.Count >= minMatches) ? combinedMatches : null;
-
     }
 
-    List<Gem> FindMatchesAt(int x, int y, int minMatches = 3)
+    private List<Gem> FindMatchesAt(int x, int y, int minMatches = 3)
     {
-        List<Gem> horizontalMatches = FindHorizontalMatches(x, y, minMatches);
-        List<Gem> verticalMatches = FindVerticalMatches(x, y, minMatches);
-
+        var horizontalMatches = FindHorizontalMatches(x, y, minMatches);
+        var verticalMatches = FindVerticalMatches(x, y, minMatches);
         if (horizontalMatches == null) horizontalMatches = new List<Gem>();
         if (verticalMatches == null) verticalMatches = new List<Gem>();
-
         var combinedMatches = horizontalMatches.Union(verticalMatches).ToList();
-
         return combinedMatches;
-
     }
 
-    List<Gem> FindingMatchesThrough(List<Gem> gems, int minMatches = 3)
+    private List<Gem> FindingMatchesThrough(List<Gem> gems, int minMatches = 3)
     {
-        List<Gem> matches = new List<Gem>();
+        var matches = new List<Gem>();
 
         foreach (Gem gem in gems)
         {
@@ -503,12 +467,11 @@ public class Board : MonoBehaviour
         }
 
         return matches;
-
     }
 
-    List<Gem> FindAllMatches()
+    private List<Gem> FindAllMatches()
     {
-        List<Gem> matches = new List<Gem>();
+        var matches = new List<Gem>();
 
         for (int i = 0; i < width; i++)
         {
@@ -520,64 +483,55 @@ public class Board : MonoBehaviour
         }
 
         return matches;
-
     }
 
     #endregion
 
     #region Utilities
 
-    bool IsWithinBounds(int x, int y)
-    {
-        return (x >= 0 && x < width && y >= 0 && y < height);
-    }
+    private bool IsWithinBounds(int x, int y) => (x >= 0 && x < width && y >= 0 && y < height);
 
-    bool IsNextTo(Tile start, Tile end)
+    private bool IsNextTo(Tile start, Tile end)
     {
         if (Mathf.Abs(start.xIndex - end.xIndex) == 1 && start.yIndex == end.yIndex) return true;
         if (Mathf.Abs(start.yIndex - end.yIndex) == 1 && start.xIndex == end.xIndex) return true;
         return false;
     }
 
-    bool HasMatchUponFill(int x, int y, int minMatches = 3)
+    private bool HasMatchUponFill(int x, int y, int minMatches = 3)
     {
         //we're only checking for left and downward matches because upon filling the board all the other cases are empty.
-        List<Gem> leftMatches = FindMatches(x, y, new Vector2(-1, 0), minMatches);
-        List<Gem> downwardMatches = FindMatches(x, y, new Vector2(0, -1), minMatches);
-
+        var leftMatches = FindMatches(x, y, new Vector2(-1, 0), minMatches);
+        var downwardMatches = FindMatches(x, y, new Vector2(0, -1), minMatches);
         if (leftMatches == null) leftMatches = new List<Gem>();
         if (downwardMatches == null) downwardMatches = new List<Gem>();
-
         return (leftMatches.Count > 0 || downwardMatches.Count > 0);
-
     }
 
-    List<int> GetColumns(List<Gem> gems)
+    private List<int> GetColumns(List<Gem> inGems)
     {
-        List<int> columns = new List<int>();
+        var columns = new List<int>();
 
-        foreach (Gem gem in gems)
+        foreach (var gem in inGems)
         {
             if (!columns.Contains(gem.xIndex)) columns.Add(gem.xIndex);
         }
 
         return columns;
-
     }
 
-    bool IsCollapsed(List<Gem> gems)
+    private bool IsCollapsed(List<Gem> inGems)
     {
-        foreach (Gem gem in gems)
+        foreach (var gem in inGems)
         {
             if (gem != null)
             {
-                if (gem.transform.position.y - (float)gem.yIndex > 0.001f) return false;
+                if (gem.transform.position.y - (float) gem.yIndex > 0.001f) return false;
             }
 
         }
 
         return true;
-
     }
 
     #endregion
