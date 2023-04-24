@@ -5,15 +5,6 @@ using System.Linq;
 
 public class Board : MonoBehaviour
 {
-    static Board m_board;
-    public static Board myBoard
-    {
-        get
-        {
-            return m_board;
-        }
-    }
-
     [SerializeField] private Camera mainCam;
     [SerializeField] private SpriteRenderer background;
 
@@ -24,11 +15,12 @@ public class Board : MonoBehaviour
 
     [SerializeField] private float swapTime = 0.5f;
 
+    [SerializeField] private GameObject edge;
+    [SerializeField] private GameObject normalTile;
+    [SerializeField] private GameObject[] gems;
+    
     private Transform _transform;
-
-    public GameObject edge;
-    public GameObject normalTile;
-    public GameObject[] gems;
+    private WaitForSeconds _swapSeconds;
 
     private Tile[,] _boardTiles;
     private Gem[,] _boardGems;
@@ -38,23 +30,14 @@ public class Board : MonoBehaviour
 
     private bool _switchingEnabled = true;
 
-
-    private void Awake()
-    {
-        if (m_board == null) m_board = this;
-        else if (m_board != this)
-        {
-            Debug.LogError("Error: there are multiple Instances of a Singleton! #1", gameObject);
-            Debug.LogError("Error: there are multiple Instances of a Singleton! #2", m_board.gameObject);
-        }
-    }
-    
     private void Start()
     {
         Tile.OnClick += ClickTile;
         Tile.OnDrag += DragToTile;
         Tile.OnRelease += ReleaseTile;
-        
+        Gem.OnPlaceGem += PlaceGem;
+
+        _swapSeconds = new WaitForSeconds(swapTime);
         _transform = transform;
         _boardGems = new Gem[width, height];
         _boardTiles = new Tile[width, height];
@@ -94,14 +77,14 @@ public class Board : MonoBehaviour
 
     private void SetupCamera()
     {
-        var xPos = (float)(width - 1) / 2f;
-        var yPos = (float)(height - 1) / 2f;
+        var xPos = (width - 1) / 2f;
+        var yPos = (height - 1) / 2f;
 
         mainCam.transform.position = new Vector3(xPos, yPos, -10f);
 
-        var aspectRatio = (float)Screen.width / (float)Screen.height;
-        var verticalSize = (float)height / 2f + (float)borderPadding;
-        var horizontalSize = ((float)width / 2f + (float)borderPadding) / aspectRatio;
+        var aspectRatio = Screen.width / Screen.height;
+        var verticalSize = height / 2f + borderPadding;
+        var horizontalSize = (width / 2f + borderPadding) / aspectRatio;
 
         mainCam.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
 
@@ -118,20 +101,10 @@ public class Board : MonoBehaviour
         return gems[rndIndex];
     }
 
-    public void PlaceGem(Gem gameGem, int x, int y)
+    private void PlaceGem(Gem inGem)
     {
-        if (gameGem == null)
-        {
-            print("Invalid Gem");
-            return;
-        }
-
-        var gemTransform = gameGem.transform;
-        gemTransform.position = new Vector3(x, y, 0);
-        gemTransform.rotation = Quaternion.identity;
-        
-        if (IsWithinBounds(x, y)) _boardGems[x, y] = gameGem;
-        gameGem.SetCoord(x, y);
+        if (IsWithinBounds(inGem.XIndex, inGem.YIndex)) 
+            _boardGems[inGem.XIndex, inGem.YIndex] = inGem;
     }
 
     private void FillBoard(int yOffset = 0, float dropTime = 0.1f)
@@ -158,23 +131,19 @@ public class Board : MonoBehaviour
 
     private Gem FillRandomAt(int x, int y, int yOffset = 0, float dropTime = 0.1f)
     {
-        var randomGem = Instantiate(GetRandomGem());
+        var foundGem = Instantiate(GetRandomGem(), _transform).TryGetComponent<Gem>(out var randomGem);
 
-        if (randomGem != null)
+        if (!foundGem) return null;
+
+        randomGem.PlaceGem(x, y);
+
+        if (yOffset != 0)
         {
-            PlaceGem(randomGem.GetComponent<Gem>(), x, y);
-
-            if (yOffset != 0)
-            {
-                randomGem.transform.position = new Vector3(x, y + yOffset, 0);
-                randomGem.GetComponent<Gem>().Move(x, y, dropTime);
-            }
-
-            randomGem.transform.parent = _transform;
-            return randomGem.GetComponent<Gem>();
+            randomGem.transform.position = new Vector3(x, y + yOffset);
+            randomGem.Move(x, y, dropTime);
         }
 
-        return null;
+        return randomGem;
     }
 
     private void ClearGemAt(int x, int y)
@@ -192,40 +161,39 @@ public class Board : MonoBehaviour
         for (var i = 0; i < gemsToClear.Count; i++)
         {
             var gem = gemsToClear[i];
-            if (gem != null) ClearGemAt(gem.xIndex, gem.yIndex);
+            if (gem != null) ClearGemAt(gem.XIndex, gem.YIndex);
         }
     }
 
     private void ClearAndRefillBoard(List<Gem> inGems)
     {
         StartCoroutine(ClearAndRefillRoutine(inGems));
-    }
-
-    IEnumerator ClearAndRefillRoutine(List<Gem> inGems)
-    {
-        _switchingEnabled = false;
-        List<Gem> matches = inGems;
-
-        do
+        
+        IEnumerator ClearAndRefillRoutine(List<Gem> inGems)
         {
-            yield return StartCoroutine(ClearAndCollapseRoutine(matches));
+            _switchingEnabled = false;
+            List<Gem> matches = inGems;
 
-            yield return null;
+            do
+            {
+                yield return StartCoroutine(ClearAndCollapseRoutine(matches));
 
-            yield return StartCoroutine(RefillRoutine());
+                yield return null;
 
-            matches = FindAllMatches();
+                yield return StartCoroutine(RefillRoutine());
 
-            yield return new WaitForSeconds(0.5f);
+                matches = FindAllMatches();
 
+                yield return new WaitForSeconds(0.5f);
+
+            }
+            while (matches.Count != 0);
+
+            _switchingEnabled = true;
         }
-        while (matches.Count != 0);
-
-        _switchingEnabled = true;
-
     }
 
-    IEnumerator ClearAndCollapseRoutine(List<Gem> gems)
+    private IEnumerator ClearAndCollapseRoutine(List<Gem> inGems)
     {
         var collapsingGems = new List<Gem>();
         var matches = new List<Gem>();
@@ -236,11 +204,11 @@ public class Board : MonoBehaviour
 
         while (!isFinished)
         {
-            ClearGems(gems);
+            ClearGems(inGems);
 
             yield return new WaitForSeconds(0.25f);
 
-            collapsingGems = CollapseColumns(gems);
+            collapsingGems = CollapseColumns(inGems);
 
             while (!IsCollapsed(collapsingGems))
             {
@@ -256,14 +224,14 @@ public class Board : MonoBehaviour
                 isFinished = true;
                 break;
             }
-            else yield return StartCoroutine(ClearAndCollapseRoutine(matches));
-
+            
+            yield return StartCoroutine(ClearAndCollapseRoutine(matches));
         }
 
         yield return null;
     }
 
-    IEnumerator RefillRoutine()
+    private IEnumerator RefillRoutine()
     {
         FillBoard(10, 0.5f);
         yield return null;
@@ -281,7 +249,8 @@ public class Board : MonoBehaviour
 
     private void DragToTile(Tile tile)
     {
-        if (_clickedTile != null && IsNextTo(tile, _clickedTile)) _targetTile = tile;
+        if (_clickedTile != null && IsNextTo(tile, _clickedTile)) 
+            _targetTile = tile;
     }
 
     private void ReleaseTile()
@@ -294,81 +263,63 @@ public class Board : MonoBehaviour
     private void SwitchTiles(Tile clickedTile, Tile targetTile)
     {
         StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
-    }
-
-    IEnumerator SwitchTilesRoutine(Tile clickedTile, Tile targetTile)
-    {
-        if (_switchingEnabled)
+        
+        IEnumerator SwitchTilesRoutine(Tile inClickedTile, Tile inTargetTile)
         {
-            Gem clickedGem = _boardGems[clickedTile.xIndex, clickedTile.yIndex];
-            Gem targetGem = _boardGems[targetTile.xIndex, targetTile.yIndex];
+            if (!_switchingEnabled) yield break;
+        
+            var clickedGem = _boardGems[inClickedTile.XIndex, inClickedTile.YIndex];
+            var targetGem = _boardGems[inTargetTile.XIndex, inTargetTile.YIndex];
 
-            if (clickedGem != null && targetGem != null)
+            if (clickedGem == null || targetGem == null) yield break;
+        
+            clickedGem.Move(inTargetTile.XIndex, inTargetTile.YIndex, swapTime);
+            targetGem.Move(inClickedTile.XIndex, inClickedTile.YIndex, swapTime);
+
+            yield return _swapSeconds;
+
+            var clickedGemMatches = FindMatchesAt(clickedGem.XIndex, clickedGem.YIndex);
+            var targetGemMatches = FindMatchesAt(targetGem.XIndex, targetGem.YIndex);
+
+            var matches = clickedGemMatches.Union(targetGemMatches).ToList();
+
+            if (matches.Count == 0)
             {
-                clickedGem.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
-                targetGem.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
-
-                yield return new WaitForSeconds(swapTime);
-
-                List<Gem> clickedGemMatches = FindMatchesAt(clickedGem.xIndex, clickedGem.yIndex);
-                List<Gem> targetGemMatches = FindMatchesAt(targetGem.xIndex, targetGem.yIndex);
-
-                var matches = clickedGemMatches.Union(targetGemMatches).ToList();
-
-                if (matches.Count == 0)
-                {
-                    clickedGem.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
-                    targetGem.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
-
-                    yield return new WaitForSeconds(swapTime);
-
-                }
-                else
-                {
-                    yield return new WaitForSeconds(swapTime);
-
-                    ClearAndRefillBoard(matches);
-
-                }
-
+                clickedGem.Move(inClickedTile.XIndex, inClickedTile.YIndex, swapTime);
+                targetGem.Move(inTargetTile.XIndex, inTargetTile.YIndex, swapTime);
+                yield return _swapSeconds;
             }
-
+            else
+            {
+                yield return _swapSeconds;
+                ClearAndRefillBoard(matches);
+            }
         }
-
     }
 
     private List<Gem> CollapseColumn(int column, float collapseTime = 0.1f)
     {
         var collapsingGems = new List<Gem>();
 
-        for (int i = 0; i < height - 1; i++)
+        for (var i = 0; i < height - 1; i++)
         {
             if (_boardGems[column, i] == null)
             {
-                for (int j = i + 1; j < height; j++)
+                for (var j = i + 1; j < height; j++)
                 {
                     if (_boardGems[column, j] != null)
                     {
                         _boardGems[column, j].Move(column, i, collapseTime * (j - i));
                         _boardGems[column, i] = _boardGems[column, j];
-                        _boardGems[column, i].SetCoord(column, i);
-
                         if (!collapsingGems.Contains(_boardGems[column, i])) collapsingGems.Add(_boardGems[column, i]);
-
                         _boardGems[column, j] = null;
-
                         break;
-
                     }
-
                 }
-
             }
-
         }
 
         return collapsingGems;
-
     }
 
     private List<Gem> CollapseColumns(List<Gem> inGems)
@@ -376,8 +327,9 @@ public class Board : MonoBehaviour
         var collapsingGems = new List<Gem>();
         var columnsToCollapse = GetColumns(inGems);
 
-        foreach (int column in columnsToCollapse)
+        for (var i = 0; i < columnsToCollapse.Count; i++)
         {
+            var column = columnsToCollapse[i];
             collapsingGems = collapsingGems.Union(CollapseColumn(column)).ToList();
         }
 
@@ -398,39 +350,31 @@ public class Board : MonoBehaviour
         if (startGem != null) matches.Add(startGem);
         else return null;
 
-        int nextX;
-        int nextY;
-
         var maxSearchValue = (width > height) ? width : height;
 
         for (var i = 1; i < maxSearchValue - 1; i++)
         {
-            nextX = x + (int) searchDirection.x * i;
-            nextY = y + (int) searchDirection.y * i;
+            var nextX = x + (int) searchDirection.x * i;
+            var nextY = y + (int) searchDirection.y * i;
 
             if (!IsWithinBounds(nextX, nextY)) break;
 
-            Gem nextGem = _boardGems[nextX, nextY];
+            var nextGem = _boardGems[nextX, nextY];
 
             if (nextGem == null) break;
-            else
-            {
-                if (startGem.matchType == nextGem.matchType && !matches.Contains(nextGem)) matches.Add(nextGem);
-                else break;
-            }
-
+            
+            if (startGem.Type != nextGem.Type || matches.Contains(nextGem)) break;
+            
+            matches.Add(nextGem);
         }
 
-
-        if (matches.Count >= minMatches) return matches;
-
-        return null;
+        return matches.Count >= minMatches ? matches : null;
     }
 
     private List<Gem> FindVerticalMatches(int x, int y, int minMatches = 3)
     {
-        var upwardMatches = FindMatches(x, y, new Vector2(0, 1), 2);
-        var downwardMatches = FindMatches(x, y, new Vector2(0, -1), 2);
+        var upwardMatches = FindMatches(x, y, Vector2.up, 2);
+        var downwardMatches = FindMatches(x, y, Vector2.down, 2);
         if (upwardMatches == null) upwardMatches = new List<Gem>();
         if (downwardMatches == null) downwardMatches = new List<Gem>();
         var combinedMatches = upwardMatches.Union(downwardMatches).ToList();
@@ -439,8 +383,8 @@ public class Board : MonoBehaviour
 
     private List<Gem> FindHorizontalMatches(int x, int y, int minMatches = 3)
     {
-        var leftMatches = FindMatches(x, y, new Vector2(-1, 0), 2);
-        var rightMatches = FindMatches(x, y, new Vector2(1, 0), 2);
+        var leftMatches = FindMatches(x, y, Vector2.left, 2);
+        var rightMatches = FindMatches(x, y, Vector2.right, 2);
         if (leftMatches == null) leftMatches = new List<Gem>();
         if (rightMatches == null) rightMatches = new List<Gem>();
         var combinedMatches = leftMatches.Union(rightMatches).ToList();
@@ -457,13 +401,14 @@ public class Board : MonoBehaviour
         return combinedMatches;
     }
 
-    private List<Gem> FindingMatchesThrough(List<Gem> gems, int minMatches = 3)
+    private List<Gem> FindingMatchesThrough(List<Gem> inGems, int minMatches = 3)
     {
         var matches = new List<Gem>();
 
-        foreach (Gem gem in gems)
+        for (var i = 0; i < inGems.Count; i++)
         {
-            matches = matches.Union(FindMatchesAt(gem.xIndex, gem.yIndex, minMatches)).ToList();
+            var gem = inGems[i];
+            matches = matches.Union(FindMatchesAt(gem.XIndex, gem.YIndex, minMatches)).ToList();
         }
 
         return matches;
@@ -473,9 +418,9 @@ public class Board : MonoBehaviour
     {
         var matches = new List<Gem>();
 
-        for (int i = 0; i < width; i++)
+        for (var i = 0; i < width; i++)
         {
-            for (int j = 0; j < height; j++)
+            for (var j = 0; j < height; j++)
             {
                 matches = matches.Union(FindMatchesAt(i, j)).ToList();
             }
@@ -493,14 +438,14 @@ public class Board : MonoBehaviour
 
     private bool IsNextTo(Tile start, Tile end)
     {
-        if (Mathf.Abs(start.xIndex - end.xIndex) == 1 && start.yIndex == end.yIndex) return true;
-        if (Mathf.Abs(start.yIndex - end.yIndex) == 1 && start.xIndex == end.xIndex) return true;
+        if (Mathf.Abs(start.XIndex - end.XIndex) == 1 && start.YIndex == end.YIndex) return true;
+        if (Mathf.Abs(start.YIndex - end.YIndex) == 1 && start.XIndex == end.XIndex) return true;
         return false;
     }
 
     private bool HasMatchUponFill(int x, int y, int minMatches = 3)
     {
-        //we're only checking for left and downward matches because upon filling the board all the other cases are empty.
+        // Only checking for left and downward matches because upon filling the board all the other cases are empty.
         var leftMatches = FindMatches(x, y, new Vector2(-1, 0), minMatches);
         var downwardMatches = FindMatches(x, y, new Vector2(0, -1), minMatches);
         if (leftMatches == null) leftMatches = new List<Gem>();
@@ -512,9 +457,10 @@ public class Board : MonoBehaviour
     {
         var columns = new List<int>();
 
-        foreach (var gem in inGems)
+        for (var i = 0; i < inGems.Count; i++)
         {
-            if (!columns.Contains(gem.xIndex)) columns.Add(gem.xIndex);
+            var gem = inGems[i];
+            if (!columns.Contains(gem.XIndex)) columns.Add(gem.XIndex);
         }
 
         return columns;
@@ -522,13 +468,10 @@ public class Board : MonoBehaviour
 
     private bool IsCollapsed(List<Gem> inGems)
     {
-        foreach (var gem in inGems)
+        for (var i = 0; i < inGems.Count; i++)
         {
-            if (gem != null)
-            {
-                if (gem.transform.position.y - (float) gem.yIndex > 0.001f) return false;
-            }
-
+            var gem = inGems[i];
+            if (gem.transform.position.y - gem.YIndex > 0.001f) return false;
         }
 
         return true;

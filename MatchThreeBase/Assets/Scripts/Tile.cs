@@ -7,28 +7,16 @@ public class Tile : MonoBehaviour
     public static event Action<Tile> OnDrag;
     public static event Action OnRelease;
     
-    public int xIndex;
-    public int yIndex;
+    public int XIndex { get; private set; }
+    public int YIndex { get; private set; }
 
     public void Initialize(int x, int y)
     {
-        xIndex = x;
-        yIndex = y;
+        XIndex = x;
+        YIndex = y;
     }
 
-    private void OnMouseDown()
-    {
-        OnClick?.Invoke(this);
-    }
-
-    private void OnMouseEnter()
-    {
-        OnDrag?.Invoke(this);
-    }
-
-    private void OnMouseUp()
-    {
-        OnRelease?.Invoke();
-    }
-
+    private void OnMouseDown() => OnClick?.Invoke(this);
+    private void OnMouseEnter() => OnDrag?.Invoke(this);
+    private void OnMouseUp() => OnRelease?.Invoke();
 }
