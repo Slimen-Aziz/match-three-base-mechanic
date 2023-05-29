@@ -32,6 +32,8 @@ public class Board : MonoBehaviour
 
     private void Start()
     {
+        Application.targetFrameRate = 60;
+        
         Tile.OnClick += ClickTile;
         Tile.OnDrag += DragToTile;
         Tile.OnRelease += ReleaseTile;
@@ -97,8 +99,9 @@ public class Board : MonoBehaviour
     private GameObject GetRandomGem()
     {
         var rndIndex = Random.Range(0, gems.Length);
-        if (gems[rndIndex] == null) print("there's no valid Gem prefab at the index: " + rndIndex);
-        return gems[rndIndex];
+        var gem = gems[rndIndex];
+        if (gem == null) Debug.LogError($"there's no valid Gem prefab at the index: {rndIndex}");
+        return gem;
     }
 
     private void PlaceGem(Gem inGem)
@@ -113,47 +116,40 @@ public class Board : MonoBehaviour
         {
             for (var j = 0; j < height; j++)
             {
-                if (_boardGems[i, j] == null)
+                if (_boardGems[i, j] != null) continue;
+                
+                FillRandomAt(i, j, yOffset, dropTime);
+
+                while (HasMatchUponFill(i, j))
                 {
-                    var gem = FillRandomAt(i, j, yOffset, dropTime);
-
-                    while (HasMatchUponFill(i, j))
-                    {
-                        ClearGemAt(i, j);
-                        gem = FillRandomAt(i, j, yOffset, dropTime);
-                    }
-
+                    ClearGemAt(i, j);
+                    FillRandomAt(i, j, yOffset, dropTime);
                 }
 
             }
         }
     }
 
-    private Gem FillRandomAt(int x, int y, int yOffset = 0, float dropTime = 0.1f)
+    private void FillRandomAt(int x, int y, int yOffset = 0, float dropTime = 0.1f)
     {
         var foundGem = Instantiate(GetRandomGem(), _transform).TryGetComponent<Gem>(out var randomGem);
 
-        if (!foundGem) return null;
+        if (!foundGem) return;
 
         randomGem.PlaceGem(x, y);
 
-        if (yOffset != 0)
-        {
-            randomGem.transform.position = new Vector3(x, y + yOffset);
-            randomGem.Move(x, y, dropTime);
-        }
-
-        return randomGem;
+        if (yOffset == 0) return;
+        
+        randomGem.transform.position = new Vector3(x, y + yOffset);
+        randomGem.Move(x, y, dropTime);
     }
 
     private void ClearGemAt(int x, int y)
     {
         var gemToClear = (IsWithinBounds(x, y)) ? _boardGems[x, y] : null;
-        if (gemToClear != null)
-        {
-            _boardGems[x, y] = null;
-            Destroy(gemToClear.gameObject);
-        }
+        if (gemToClear == null) return;
+        _boardGems[x, y] = null;
+        Destroy(gemToClear.gameObject);
     }
 
     private void ClearGems(List<Gem> gemsToClear)
@@ -193,7 +189,7 @@ public class Board : MonoBehaviour
         }
     }
 
-    private IEnumerator ClearAndCollapseRoutine(List<Gem> inGems)
+    /*private IEnumerator ClearAndCollapseRoutine(List<Gem> inGems)
     {
         var collapsingGems = new List<Gem>();
         var matches = new List<Gem>();
@@ -229,6 +225,34 @@ public class Board : MonoBehaviour
         }
 
         yield return null;
+    }*/
+    
+    private IEnumerator ClearAndCollapseRoutine(List<Gem> inGems)
+    {
+        yield return new WaitForSeconds(0.5f);
+
+        ClearGems(inGems);
+
+        yield return new WaitForSeconds(0.25f);
+
+        var collapsingGems = CollapseColumns(inGems);
+
+        while (!IsCollapsed(collapsingGems))
+        {
+            yield return null;
+        }
+
+        yield return new WaitForSeconds(0.2f);
+
+        var matches = FindingMatchesThrough(collapsingGems);
+
+        if (matches.Count == 0)
+        {
+            yield return null;
+            yield break;
+        }
+            
+        yield return StartCoroutine(ClearAndCollapseRoutine(matches));
     }
 
     private IEnumerator RefillRoutine()
@@ -262,12 +286,11 @@ public class Board : MonoBehaviour
 
     private void SwitchTiles(Tile clickedTile, Tile targetTile)
     {
+        if (!_switchingEnabled) return;
         StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
         
         IEnumerator SwitchTilesRoutine(Tile inClickedTile, Tile inTargetTile)
         {
-            if (!_switchingEnabled) yield break;
-        
             var clickedGem = _boardGems[inClickedTile.XIndex, inClickedTile.YIndex];
             var targetGem = _boardGems[inTargetTile.XIndex, inTargetTile.YIndex];
 
@@ -303,19 +326,15 @@ public class Board : MonoBehaviour
 
         for (var i = 0; i < height - 1; i++)
         {
-            if (_boardGems[column, i] == null)
+            if (_boardGems[column, i] != null) continue;
+            for (var j = i + 1; j < height; j++)
             {
-                for (var j = i + 1; j < height; j++)
-                {
-                    if (_boardGems[column, j] != null)
-                    {
-                        _boardGems[column, j].Move(column, i, collapseTime * (j - i));
-                        _boardGems[column, i] = _boardGems[column, j];
-                        if (!collapsingGems.Contains(_boardGems[column, i])) collapsingGems.Add(_boardGems[column, i]);
-                        _boardGems[column, j] = null;
-                        break;
-                    }
-                }
+                if (_boardGems[column, j] == null) continue;
+                _boardGems[column, j].Move(column, i, collapseTime * (j - i));
+                _boardGems[column, i] = _boardGems[column, j];
+                if (!collapsingGems.Contains(_boardGems[column, i])) collapsingGems.Add(_boardGems[column, i]);
+                _boardGems[column, j] = null;
+                break;
             }
         }
 
